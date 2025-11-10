@@ -114,6 +114,25 @@ Enable GitHub Pages for documentation:
 - Source: Deploy from a branch
 - Branch: `main` / `docs`
 
+### 5. Set up DOCUMENTER_KEY (Optional but Recommended)
+
+To enable automatic documentation deployment, you need to set up a `DOCUMENTER_KEY` secret:
+
+1. Generate a deploy key:
+   ```julia
+   julia> using Documenter, DocumenterTools
+   julia> DocumenterTools.genkeys("tensor4all", "YourPkg.jl")
+   ```
+
+2. Add the private key as a GitHub secret:
+   - Go to repository Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `DOCUMENTER_KEY`
+   - Value: Paste the private key generated above
+   - Click "Add secret"
+
+**Note**: If `DOCUMENTER_KEY` is not set, the documentation job will still run but will skip deployment (with `continue-on-error: true`). This allows the CI to pass even without the key configured.
+
 ## Development Tips
 
 ### Running Tests
