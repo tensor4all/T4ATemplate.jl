@@ -8,18 +8,41 @@
 
 - When working on a git repository, navigate into its directory and work as if it were a standalone package. Be aware of dependencies between packages
 
-- **Running tests**: Use `Pkg.test()` as the preferred method for running tests:
+- **Running tests**: T4A packages use two test frameworks depending on their needs:
+  - **ReTestItems**: For packages that don't use Distributed (e.g., T4AQuantics.jl, QuanticsGrids.jl)
+  - **Standard Test.jl**: For packages that use Distributed for parallel computation (e.g., T4APartitionedTT.jl, T4ATCIAlgorithms.jl)
+
+  **Full test suite** - Use `Pkg.test()` for both frameworks:
   ```bash
   julia --project=. -e "using Pkg; Pkg.test()" 2>&1 | tee test_output.log
   ```
-  **Why `Pkg.test()` is preferred**:
-  - Automatically sets up a temporary test environment with all test dependencies from `[extras]` and `[targets]`
-  - No need to manually install test-only packages like ReTestItems, Aqua, etc.
-  - Avoids accidentally modifying `Project.toml` by installing test dependencies in the project environment
+  This automatically sets up test dependencies without modifying `Project.toml`.
 
-  **When to use direct execution**: Running `julia --project=. test/runtests.jl` directly requires manually installing test dependencies first. If you install them in the project environment, `Project.toml` will be modified and you'll need to revert those changes before committing. Use direct execution only when you need more control over the test process (e.g., debugging with specific options).
+  **Running specific tests for debugging**:
 
-  **Always save test output to files** - this is critical because test output contains detailed error messages, stack traces, and diagnostic information that you'll need for debugging. Using `tee` allows you to see progress in real-time while simultaneously saving everything to files.
+  For **ReTestItems packages** (check if `test/runtests.jl` uses `ReTestItems`):
+  ```bash
+  # Requires ReTestItems to be installed first
+  julia --project=. -e "using ReTestItems; runtests(\"test/specific_tests.jl\")" 2>&1 | tee test_specific.log
+
+  # Filter by test name (regex supported)
+  julia --project=. -e "using ReTestItems; runtests(\"test/\"; name=\"test_name\")" 2>&1 | tee test_specific.log
+  ```
+
+  For **standard Test.jl packages** (check if `test/runtests.jl` uses `include`):
+  ```bash
+  # Include the specific test file directly
+  julia --project=. -e "
+    using PkgName  # Replace with actual package name
+    using Test
+    include(\"test/_util.jl\")  # If test utilities exist
+    include(\"test/specific_tests.jl\")
+  " 2>&1 | tee test_specific.log
+  ```
+
+  **Note**: Running specific tests directly requires test dependencies (ReTestItems, etc.) to be installed. If you install them in the project environment, `Project.toml` will be modified - revert these changes before committing.
+
+  **Always save test output to files** using `tee` for debugging.
 
 - **Handling Project.toml changes during testing**: If `Pkg.add` or similar operations during testing modify `Project.toml`, **always review the changes carefully** before committing:
   - First, use `git diff Project.toml` to see exactly what was added or changed
@@ -27,18 +50,6 @@
   - Understand the diff, then manually remove only the unnecessary parts
   - **Never commit changes that promote test dependencies or weak dependencies to strong dependencies** - this is strictly forbidden. Test dependencies should remain in `[compat]` or `[extras]` sections, and weak dependencies should not be moved to `[deps]`
   - **Common issue**: Tools like Aqua.jl, JET.jl, etc. are often accidentally added to `Project.toml` during testing. However, when using `Pkg.test()`, these test tools are automatically available as test dependencies and should **not** be added to `[deps]`. If they appear in `Project.toml` after testing, remove them manually.
-
-- Some libraries use ReTestItems as their test framework (e.g., Quantics.jl, QuanticsGrids.jl, TreeTCI.jl, SimpleTensorTrains.jl). However, ReTestItems has compatibility issues with libraries that use Distributed for parallel computation, so those libraries use the standard Test.jl framework instead
-
-- **For ReTestItems packages**: Use `Pkg.test()` for running the full test suite (as described above). For running individual test files during debugging, you can use ReTestItems directly, but note that this requires ReTestItems to be installed first:
-  ```bash
-  # Run a specific test file (requires ReTestItems to be installed)
-  julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\")" 2>&1 | tee test_binaryop.log
-
-  # Run with specific options (e.g., single worker for debugging)
-  julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\"; nworkers=1)" 2>&1 | tee test_binaryop.log
-  ```
-  Note: The file paths should be relative to the package root directory.
 
 - If a package has a `.JuliaFormatter.toml` file, follow its formatting rules. Otherwise, follow standard Julia style guidelines
 
