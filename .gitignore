@@ -9,3 +9,6 @@ Manifest.toml
 .vscode/
 .idea/
 
+# Local logs / artifacts (do not commit)
+/*.log
+/docs/*.log

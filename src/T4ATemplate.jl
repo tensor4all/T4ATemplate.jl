@@ -58,9 +58,17 @@ function generate(pkgname::AbstractString; user="tensor4all", include_tci=false)
     # Create package
     result = t4atemplate(pkgname)
     
+    pkg_path = joinpath(pwd(), pkgname)
+    
+    # Copy AGENTS.md from template
+    agents_source = joinpath(T4A_TEMPLATE_DIR[], "AGENTS.md")
+    agents_dest = joinpath(pkg_path, "AGENTS.md")
+    if isfile(agents_source)
+        cp(agents_source, agents_dest; force=true)
+    end
+    
     # Add dependencies if requested by editing Project.toml directly
     if include_tci
-        pkg_path = joinpath(pwd(), pkgname)
         project_file = joinpath(pkg_path, "Project.toml")
         project = TOML.parsefile(project_file)
         
