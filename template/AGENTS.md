@@ -8,15 +8,18 @@
 
 - When working on a git repository, navigate into its directory and work as if it were a standalone package. Be aware of dependencies between packages
 
-- **When running tests, always redirect stdout and stderr to files and use tee for real-time output**: **Always save test output to files** - this is critical because test output contains detailed error messages, stack traces, and diagnostic information that you'll need for debugging. Without saving to files, you would need to run tests twice: once to see what happened, and again to capture the details. Using `tee` allows you to see progress in real-time while simultaneously saving everything to files. Example:
+- **Running tests**: Use `Pkg.test()` as the preferred method for running tests:
   ```bash
-  julia --project=. test/runtests.jl 2>&1 | tee test_output.log
+  julia --project=. -e "using Pkg; Pkg.test()" 2>&1 | tee test_output.log
   ```
-  Or to separate stdout and stderr while still seeing both in real-time:
-  ```bash
-  julia --project=. test/runtests.jl > >(tee test_stdout.log) 2> >(tee test_stderr.log >&2)
-  ```
-  **Important**: Always save test output to files. The saved logs are essential for debugging failures, understanding test behavior, and reviewing detailed error messages without re-running tests.
+  **Why `Pkg.test()` is preferred**:
+  - Automatically sets up a temporary test environment with all test dependencies from `[extras]` and `[targets]`
+  - No need to manually install test-only packages like ReTestItems, Aqua, etc.
+  - Avoids accidentally modifying `Project.toml` by installing test dependencies in the project environment
+
+  **When to use direct execution**: Running `julia --project=. test/runtests.jl` directly requires manually installing test dependencies first. If you install them in the project environment, `Project.toml` will be modified and you'll need to revert those changes before committing. Use direct execution only when you need more control over the test process (e.g., debugging with specific options).
+
+  **Always save test output to files** - this is critical because test output contains detailed error messages, stack traces, and diagnostic information that you'll need for debugging. Using `tee` allows you to see progress in real-time while simultaneously saving everything to files.
 
 - **Handling Project.toml changes during testing**: If `Pkg.add` or similar operations during testing modify `Project.toml`, **always review the changes carefully** before committing:
   - First, use `git diff Project.toml` to see exactly what was added or changed
@@ -27,21 +30,15 @@
 
 - Some libraries use ReTestItems as their test framework (e.g., Quantics.jl, QuanticsGrids.jl, TreeTCI.jl, SimpleTensorTrains.jl). However, ReTestItems has compatibility issues with libraries that use Distributed for parallel computation, so those libraries use the standard Test.jl framework instead
 
-- **For ReTestItems packages, you can run individual test files**: ReTestItems supports running specific test files by passing file paths to `runtests()`. This is useful for debugging specific tests without running the entire test suite. Examples:
+- **For ReTestItems packages**: Use `Pkg.test()` for running the full test suite (as described above). For running individual test files during debugging, you can use ReTestItems directly, but note that this requires ReTestItems to be installed first:
   ```bash
-  # Run a specific test file
-  julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\")"
-  
-  # Run multiple specific test files
-  julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\", \"test/mul_tests.jl\")"
-  
-  # Run with specific options (e.g., single worker for debugging)
-  julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\"; nworkers=1)"
-  ```
-  Note: The file paths should be relative to the package root directory. Always redirect output to files when debugging:
-  ```bash
+  # Run a specific test file (requires ReTestItems to be installed)
   julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\")" 2>&1 | tee test_binaryop.log
+
+  # Run with specific options (e.g., single worker for debugging)
+  julia --project=. -e "using ReTestItems; runtests(\"test/binaryop_tests.jl\"; nworkers=1)" 2>&1 | tee test_binaryop.log
   ```
+  Note: The file paths should be relative to the package root directory.
 
 - If a package has a `.JuliaFormatter.toml` file, follow its formatting rules. Otherwise, follow standard Julia style guidelines
 
@@ -59,25 +56,21 @@
 
 - Some libraries are already registered in the official Julia registry. To register a new version, comment `@JuliaRegistrator register` in the library's issue, and the bot will create a PR to the official registry
 
-- **Using `[sources]` for local development (strongly recommended for T4A packages)**: For T4A packages that depend on other T4A packages, it is strongly recommended to add a `[sources]` section in Project.toml pointing to local paths. This enables seamless local development across interdependent packages.
+- **Using `[sources]` for local development**: For T4A packages that depend on other T4A packages, add a `[sources]` section in Project.toml pointing to local paths during development. This enables seamless local development across interdependent packages.
   ```toml
   [sources]
   T4ATensorTrain = {path = "../T4ATensorTrain.jl"}
-  TensorCrossInterpolation = {path = "../TensorCrossInterpolation.jl"}
+  T4AMatrixCI = {path = "../T4AMatrixCI.jl"}
   ```
-  **Benefits**:
-  - When local paths exist (e.g., in the umbrella repository), Julia uses the local versions automatically
-  - When local paths don't exist (e.g., in CI or user environments), Julia falls back to the registered versions from the registry
-  - No need to add/remove `[sources]` entries during development workflows
-  - Makes cross-package development and testing much smoother
+  **Important**: `[sources]` entries are for local development only. **Always remove `[sources]` from Project.toml before committing.** The `[sources]` section should never be pushed to the repository.
 
 - **Updating multiple interdependent Julia packages**: When you need to update many Julia libraries that depend on each other (e.g., after bumping an upstream package version), it is best to update and verify everything locally before pushing to remote.
-  (a) Ensure `[sources]` entries in each package's Project.toml point to local paths (should already be present if following the recommendation above).
-  (b) Update all packages in dependency order. Commit changes to local working branches but do not push yet. Include version bumps in these commits.
-  (c) Verify that all packages pass tests and documentation builds locally.
+  (a) Add `[sources]` entries in each package's Project.toml pointing to local paths for development.
+  (b) Update all packages in dependency order. Verify that all packages pass tests and documentation builds locally.
+  (c) Remove `[sources]` entries before committing. Commit changes to local working branches but do not push yet. Include version bumps in these commits.
   (d) Starting from the most upstream package, push the branch, create a PR, and merge after CI passes. After each merge, register the new version to T4ARegistry using T4ARegistrator.jl. Then proceed to the next downstream package.
-  
-  **If a problem occurs during step (d)**: If any package fails CI or encounters issues during this phase, go back to step (a) for that package and all its downstream dependencies. Fix the issue locally and verify all affected packages pass tests before attempting to push again. Always strive to maintain local consistency before pushing to remote.
-  
+
+  **If a problem occurs during step (d)**: If any package fails CI or encounters issues during this phase, go back to step (a) for that package and all its downstream dependencies. Fix the issue locally and verify all affected packages pass tests before attempting to push again.
+
   **Note**: Do not commit Manifest.toml files. They are auto-generated and will be resolved correctly by CI and other environments based on Project.toml.
 
