@@ -40,7 +40,18 @@
   " 2>&1 | tee test_specific.log
   ```
 
-  **Note**: Running specific tests directly requires test dependencies (ReTestItems, etc.) to be installed. If you install them in the project environment, `Project.toml` will be modified - revert these changes before committing.
+  **Note**: Running specific tests directly requires test dependencies (ReTestItems, etc.) to be installed. If you install them in the project environment, `Project.toml` and `Manifest.toml` will be modified.
+
+  **After debugging, revert these changes**:
+  ```bash
+  # Check what was added
+  git diff Project.toml
+
+  # If ONLY test deps were added (no other changes), safe to checkout
+  git checkout Project.toml Manifest.toml
+
+  # If you have other uncommitted changes, manually remove the added lines
+  ```
 
   **Always save test output to files** using `tee` for debugging.
 
