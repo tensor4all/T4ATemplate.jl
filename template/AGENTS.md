@@ -25,6 +25,29 @@
   - **Never commit changes that promote test dependencies or weak dependencies to strong dependencies** - this is strictly forbidden. Test dependencies should remain in `[compat]` or `[extras]` sections, and weak dependencies should not be moved to `[deps]`
   - **Common issue**: Tools like Aqua.jl, JET.jl, etc. are often accidentally added to `Project.toml` during testing. However, when using `Pkg.test()`, these test tools are automatically available as test dependencies and should **not** be added to `[deps]`. If they appear in `Project.toml` after testing, remove them manually.
 
+- **CI.yml rollup job verification**: When working on a package, verify that `.github/workflows/CI.yml` includes a `rollup` job that aggregates test and docs job results. The rollup job should:
+  - Have `needs: [test, docs]` (or appropriate job names)
+  - Use `if: always()` to run regardless of previous job results
+  - Check for both `failure` and `cancelled` statuses: `contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')`
+  - If the rollup job is missing or incorrectly configured, propose updating the CI.yml to match the template in `T4ATemplate.jl/template/CI.yml`
+
+- **Branch protection and auto merge verification**: Use `gh` command to verify that branch protection rules are properly configured and auto merge is enabled:
+  ```bash
+  # Check if auto merge is enabled
+  gh api /repos/OWNER/REPO --jq '.allow_auto_merge'
+  
+  # Check branch protection rules
+  gh api /repos/OWNER/REPO/branches/main/protection --jq '{required_status_checks, allow_auto_merge: .required_status_checks.checks[0].context}'
+  ```
+  If auto merge is not enabled or branch protection is missing the rollup job check, propose enabling auto merge and updating branch protection rules:
+  ```bash
+  # Enable auto merge
+  gh api --method PATCH /repos/OWNER/REPO -f allow_auto_merge=true
+  
+  # Set branch protection with rollup check requirement
+  gh api --method PUT /repos/OWNER/REPO/branches/main/protection -f required_status_checks='{"strict": true, "contexts": ["rollup"]}' -f enforce_admins=false
+  ```
+
 - Some libraries use ReTestItems as their test framework (e.g., Quantics.jl, QuanticsGrids.jl, TreeTCI.jl, SimpleTensorTrains.jl). However, ReTestItems has compatibility issues with libraries that use Distributed for parallel computation, so those libraries use the standard Test.jl framework instead
 
 - **For ReTestItems packages, you can run individual test files**: ReTestItems supports running specific test files by passing file paths to `runtests()`. This is useful for debugging specific tests without running the entire test suite. Examples:
@@ -67,7 +90,6 @@
   ```
   **Benefits**:
   - When local paths exist (e.g., in the umbrella repository), Julia uses the local versions automatically
-  - When local paths don't exist (e.g., in CI or user environments), Julia falls back to the registered versions from the registry
   - No need to add/remove `[sources]` entries during development workflows
   - Makes cross-package development and testing much smoother
 
